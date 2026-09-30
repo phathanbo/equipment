@@ -1,0 +1,99 @@
+/* Global Styles for Hospital Equipment Management */
+@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
+
+body {
+    font-family: 'Sarabun', sans-serif;
+}
+
+.table-container {
+    max-height: 600px;
+    overflow-x: auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Responsive custom scrollbars */
+.table-container::-webkit-scrollbar,
+#configModal .overflow-y-auto::-webkit-scrollbar,
+#importModal .overflow-y-auto::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.table-container::-webkit-scrollbar-thumb,
+#configModal .overflow-y-auto::-webkit-scrollbar-thumb,
+#importModal .overflow-y-auto::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1;
+    border-radius: 3px;
+}
+
+.table-container::-webkit-scrollbar-thumb:hover {
+    background-color: #94a3b8;
+}
+
+/* Mobile & Tablet Optimizations */
+@media (max-width: 768px) {
+    input, select, button {
+        font-size: 16px !important; /* Prevents auto-zoom on iOS Safari */
+    }
+    
+    .table-container table {
+        min-width: 800px; /* Ensure table remains readable and scrollable horizontally */
+    }
+}
+
+/* Mobile Card View for Equipment List */
+.mobile-card {
+    transition: all 0.2s ease-in-out;
+}
+.mobile-card:active {
+    transform: scale(0.99);
+}
+
+/* Resizable Table Header & Column Styles */
+.resizable-th {
+    position: relative;
+    user-select: none;
+}
+
+.resizer-handle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 6px;
+    cursor: col-resize;
+    user-select: none;
+    height: 100%;
+    z-index: 1;
+}
+
+.resizer-handle:hover,
+.resizing {
+    background-color: #3b82f6;
+    opacity: 0.8;
+}
+
+/* Compact cell styles with truncation and tooltip */
+.cell-name {
+    max-width: 200px;
+    min-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cell-location {
+    max-width: 160px;
+    min-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cell-div, .cell-type {
+    max-width: 160px;
+    min-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

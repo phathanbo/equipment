@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบจัดการครุภัณฑ์โรงพยาบาล (Hospital Equipment Management)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS for Excel Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/style.css?v=20260922_2">
+</head>
+
+<body class="bg-gray-100 p-2 sm:p-4 md:p-6 text-gray-800 antialiased">
+
+    <!-- Top Form Card -->
+    <div class="max-w-7xl mx-auto bg-white p-3 sm:p-5 md:p-6 rounded-lg shadow-md mb-4 sm:mb-6">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4 border-b pb-3">
+            <h1 class="text-xl sm:text-2xl font-bold text-blue-700 flex items-center gap-2">
+                🏥 <span>ระบบบันทึกครุภัณฑ์โรงพยาบาล</span>
+            </h1>
+            <div class="flex flex-wrap gap-2 w-full sm:w-auto items-center">
+                <!-- Sync Controls -->
+                <button id="pullCloudBtn"
+                    class="bg-blue-50 border border-blue-300 text-blue-700 px-3 py-2 rounded-lg shadow-sm text-xs sm:text-sm hover:bg-blue-100 flex items-center justify-center gap-1 font-medium" title="ดึงข้อมูลล่าสุดจาก Cloud ลงมาเก็บในเครื่อง">
+                    📥 <span>ดึงจาก Cloud</span>
+                </button>
+                <button id="syncCloudBtn"
+                    class="bg-emerald-600 text-white px-3 sm:px-4 py-2 rounded-lg shadow text-xs sm:text-sm hover:bg-emerald-700 flex items-center justify-center gap-1 font-semibold transition-all" title="ส่งข้อมูลที่แก้ไขในเครื่องขึ้น Cloud">
+                    ☁️ <span>ส่งขึ้น Cloud</span> <span id="pendingSyncBadge" class="hidden bg-white text-emerald-800 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full ml-0.5">0</span>
+                </button>
+                <button id="toggleDashboardBtn"
+                    class="flex-1 sm:flex-initial bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-3 sm:px-4 py-2 rounded-lg shadow text-xs sm:text-sm hover:from-blue-700 hover:to-indigo-700 flex items-center justify-center gap-1 font-semibold transition-all">
+                    📊 <span>สรุปแดชบอร์ด</span>
+                </button>
+                <button id="openConfigModalBtn"
+                    class="flex-1 sm:flex-initial bg-gray-100 border border-gray-300 text-gray-700 px-3 sm:px-4 py-2 rounded-lg shadow-sm text-xs sm:text-sm hover:bg-gray-200 flex items-center justify-center gap-1 font-medium">
+                    ⚙️ <span>ตั้งค่าฟิลด์</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Dashboard Summary Section (Collapsible) -->
+        <div id="dashboardSection" class="hidden mb-5 pt-1 border-b pb-5">
+            <!-- 4 Top KPI Cards -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mb-4">
+                <div class="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 p-3 sm:p-4 rounded-xl shadow-sm">
+                    <p class="text-xs font-semibold text-blue-700">📦 ครุภัณฑ์ทั้งหมด</p>
+                    <p class="text-xl sm:text-3xl font-extrabold text-blue-900 mt-1" id="dashTotalCount">0</p>
+                    <p class="text-[11px] text-blue-600 mt-0.5">รายการในระบบ</p>
+                </div>
+                <div class="bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 p-3 sm:p-4 rounded-xl shadow-sm">
+                    <p class="text-xs font-semibold text-emerald-700">💰 มูลค่ารวมทั้งหมด</p>
+                    <p class="text-xl sm:text-3xl font-extrabold text-emerald-900 mt-1" id="dashTotalValue">0</p>
+                    <p class="text-[11px] text-emerald-600 mt-0.5">บาท (ราคาต่อหน่วย)</p>
+                </div>
+                <div class="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 p-3 sm:p-4 rounded-xl shadow-sm">
+                    <p class="text-xs font-semibold text-purple-700">🏷️ หมวดหมู่ประเภท</p>
+                    <p class="text-xl sm:text-3xl font-extrabold text-purple-900 mt-1" id="dashTypeCount">0</p>
+                    <p class="text-[11px] text-purple-600 mt-0.5">ประเภทครุภัณฑ์</p>
+                </div>
+                <div class="bg-gradient-to-br from-amber-50 to-amber-100 border border-amber-200 p-3 sm:p-4 rounded-xl shadow-sm">
+                    <p class="text-xs font-semibold text-amber-700">🏢 กลุ่มงาน/แผนก</p>
+                    <p class="text-xl sm:text-3xl font-extrabold text-amber-900 mt-1" id="dashDivCount">0</p>
+                    <p class="text-[11px] text-amber-600 mt-0.5">หน่วยงานที่ถือครอง</p>
+                </div>
+            </div>
+
+            <!-- Breakdown Grids: By Type & By Department -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Breakdown by TYPE -->
+                <div class="bg-gray-50 border rounded-xl p-3 sm:p-4 shadow-sm flex flex-col">
+                    <div class="flex justify-between items-center mb-2 pb-1 border-b">
+                        <h3 class="text-xs sm:text-sm font-bold text-gray-800 flex items-center gap-1.5">
+                            🏷️ <span>แยกตามประเภทครุภัณฑ์ (TYPE)</span>
+                        </h3>
+                        <span class="text-[11px] text-gray-500">จำนวน / มูลค่า</span>
+                    </div>
+                    <div id="dashTypeBreakdown" class="space-y-2 max-h-60 overflow-y-auto pr-1 text-xs">
+                        <!-- Dynamic Type Progress Bars -->
+                    </div>
+                </div>
+
+                <!-- Breakdown by DIV -->
+                <div class="bg-gray-50 border rounded-xl p-3 sm:p-4 shadow-sm flex flex-col">
+                    <div class="flex justify-between items-center mb-2 pb-1 border-b">
+                        <h3 class="text-xs sm:text-sm font-bold text-gray-800 flex items-center gap-1.5">
+                            🏢 <span>แยกตามกลุ่มงาน/แผนก (DIV)</span>
+                        </h3>
+                        <span class="text-[11px] text-gray-500">จำนวน / มูลค่า</span>
+                    </div>
+                    <div id="dashDivBreakdown" class="space-y-2 max-h-60 overflow-y-auto pr-1 text-xs">
+                        <!-- Dynamic Div Progress Bars -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dynamic Form Key Data -->
+        <form id="equipmentForm" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <!-- Render Dynamic Fields Here -->
+        </form>
+
+        <div class="flex flex-col-reverse sm:flex-row gap-2 justify-end mt-4 pt-2 border-t" id="formBtns">
+            <button type="button" id="resetBtn"
+                class="w-full sm:w-auto bg-gray-400 text-white px-4 py-2.5 sm:py-2 rounded-lg shadow hover:bg-gray-500 text-sm font-medium">ล้างฟอร์ม</button>
+            <button type="button" id="cancelEditBtn"
+                class="w-full sm:w-auto bg-orange-500 text-white px-4 py-2.5 sm:py-2 rounded-lg shadow hover:bg-orange-600 hidden text-sm font-medium">ยกเลิกแก้ไข</button>
+            <button type="button" id="duplicateCurrentBtn"
+                class="w-full sm:w-auto bg-indigo-600 text-white px-4 py-2.5 sm:py-2 rounded-lg shadow hover:bg-indigo-700 hidden items-center justify-center gap-1 text-sm font-semibold" title="คัดลอกข้อมูลในฟอร์มนี้เพื่อสร้างเป็นชิ้นใหม่">📋 ทำซ้ำรายการนี้ (สร้างชิ้นใหม่)</button>
+            <button type="button" id="spreadCurrentBtn"
+                class="w-full sm:w-auto bg-amber-600 text-white px-4 py-2.5 sm:py-2 rounded-lg shadow hover:bg-amber-700 hidden items-center justify-center gap-1 text-sm font-semibold" title="กระจายข้อมูลแยก Noid ที่เป็นช่วงออกเป็นหลายชิ้น">🔄 กระจายข้อมูล (ช่วงเลข)</button>
+            <button type="button" id="deleteCurrentEditBtn"
+                class="w-full sm:w-auto bg-red-600 text-white px-4 py-2.5 sm:py-2 rounded-lg shadow hover:bg-red-700 hidden items-center justify-center gap-1 text-sm font-medium">🗑️ ลบรายการนี้</button>
+            <button type="submit" form="equipmentForm" id="submitBtn"
+                class="w-full sm:w-auto bg-green-600 text-white px-6 py-2.5 sm:py-2 rounded-lg shadow hover:bg-green-700 text-sm font-bold flex items-center justify-center gap-1">
+                💾 <span>บันทึกข้อมูล (Save)</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Data Table & Controls Card -->
+    <div class="max-w-7xl mx-auto bg-white p-3 sm:p-5 md:p-6 rounded-lg shadow-md">
+        <div class="flex flex-col lg:flex-row justify-between items-stretch lg:items-center mb-4 gap-3">
+            <div class="flex items-center justify-between">
+                <h2 class="text-lg sm:text-xl font-bold text-gray-800 flex items-center gap-2">
+                    📋 <span>รายการครุภัณฑ์</span> (<span id="totalItems" class="text-blue-600 font-extrabold">0</span>)
+                </h2>
+                <!-- Mobile View Switcher (Table vs Card) -->
+                <div class="inline-flex rounded-md shadow-sm sm:hidden ml-2" role="group">
+                    <button type="button" id="viewModeCardBtn" class="px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-100 rounded-l-lg border border-blue-300">
+                        📇 การ์ด
+                    </button>
+                    <button type="button" id="viewModeTableBtn" class="px-2.5 py-1 text-xs font-medium text-gray-700 bg-white rounded-r-lg border border-gray-300">
+                        📊 ตาราง
+                    </button>
+                </div>
+            </div>
+
+            <!-- Search & Action Toolbar -->
+            <div class="flex flex-col sm:flex-row flex-wrap gap-2 items-stretch sm:items-center">
+                <!-- Search Box -->
+                <div class="relative flex-1 sm:w-56">
+                    <input type="text" id="searchInput" placeholder="🔍 ค้นหาทั่วไป..."
+                        class="w-full border border-gray-300 pl-3 pr-8 py-2 rounded-lg text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <button id="clearSearchBtn" class="absolute right-2.5 top-2 text-gray-400 hover:text-gray-600 hidden text-sm font-bold">&times;</button>
+                </div>
+
+                <!-- Filter by Department / Div -->
+                <div class="sm:w-44">
+                    <select id="filterDivSelect" class="w-full border border-gray-300 py-2 px-2.5 rounded-lg text-xs sm:text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium text-gray-700">
+                        <option value="">🏢 ทุกแผนก/กลุ่มงาน</option>
+                    </select>
+                </div>
+
+                <!-- Filter by Type -->
+                <div class="sm:w-44">
+                    <select id="filterTypeSelect" class="w-full border border-gray-300 py-2 px-2.5 rounded-lg text-xs sm:text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-purple-500 focus:outline-none font-medium text-gray-700">
+                        <option value="">🏷️ ทุกประเภท</option>
+                    </select>
+                </div>
+
+                <!-- Reset Filter Button -->
+                <button type="button" id="resetFilterBtn" class="hidden text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-300 px-2.5 py-2 rounded-lg items-center gap-1 font-medium" title="ล้างตัวกรองทั้งหมด">
+                    ✖ ล้างตัวกรอง
+                </button>
+
+                <!-- Action Buttons -->
+                <div class="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 sm:gap-2">
+                    <label for="importExcelFile" class="cursor-pointer bg-purple-600 text-white px-3 py-2 rounded-lg shadow text-xs sm:text-sm hover:bg-purple-700 flex items-center justify-center gap-1 font-medium">
+                        📥 Import
+                    </label>
+                    <input type="file" id="importExcelFile" accept=".xlsx,.xls,.csv" class="hidden">
+                    <button id="exportExcelBtn"
+                        class="bg-emerald-600 text-white px-3 py-2 rounded-lg shadow text-xs sm:text-sm hover:bg-emerald-700 flex items-center justify-center gap-1 font-medium">
+                        📊 Excel
+                    </button>
+                    <button id="exportCsvBtn"
+                        class="bg-blue-600 text-white px-3 py-2 rounded-lg shadow text-xs sm:text-sm hover:bg-blue-700 flex items-center justify-center gap-1 font-medium">
+                        📑 CSV
+                    </button>
+                    <button id="deleteAllBtn"
+                        class="bg-red-600 text-white px-3 py-2 rounded-lg shadow text-xs sm:text-sm hover:bg-red-700 flex items-center justify-center gap-1 font-medium col-span-2 sm:col-span-1">
+                        🗑️ ลบทั้งหมด
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Card List View (visible on small screens when in card mode) -->
+        <div id="mobileCardContainer" class="block sm:hidden space-y-3 mb-2">
+            <!-- Dynamic Mobile Cards -->
+        </div>
+
+        <!-- Desktop & Tablet Table View -->
+        <div id="tableContainerWrap" class="table-container border rounded-lg hidden sm:block">
+            <table class="w-full text-xs text-left border-collapse">
+                <thead class="bg-gray-100 sticky top-0 border-b shadow-sm" id="tableHead">
+                    <!-- Dynamic Headers -->
+                </thead>
+                <tbody id="tableBody" class="divide-y divide-gray-200">
+                    <!-- Dynamic Data Rows -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Modal for Dynamic Field Configuration -->
+    <div id="configModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center p-2 sm:p-4 z-50">
+        <div class="bg-white rounded-lg shadow-lg w-full max-w-4xl max-h-[95vh] sm:max-h-[90vh] flex flex-col">
+            <div class="p-3 sm:p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-lg">
+                <h3 class="text-base sm:text-lg font-bold text-gray-800">ตั้งค่าชื่อฟิลด์ เพิ่มช่อง และคำอธิบาย</h3>
+                <button id="closeConfigModalBtn"
+                    class="text-gray-500 hover:text-red-500 text-2xl font-bold p-1">&times;</button>
+            </div>
+
+            <div class="p-4 overflow-y-auto flex-1 space-y-4">
+                <!-- Section 1: Add New Field -->
+                <div class="bg-blue-50 border border-blue-200 p-4 rounded-lg">
+                    <h4 class="font-bold text-blue-800 mb-2 text-sm">➕ เพิ่มช่องกรอกข้อมูลใหม่ (Add New Field)</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-12 gap-2">
+                        <div class="md:col-span-3">
+                            <label class="block text-xs font-semibold text-gray-600">รหัสฟิลด์ภาษาอังกฤษ (Key)*</label>
+                            <input type="text" id="newFieldKey" placeholder="เช่น weight, warranty"
+                                class="w-full border p-1.5 rounded text-sm bg-white">
+                        </div>
+                        <div class="md:col-span-3">
+                            <label class="block text-xs font-semibold text-gray-600">ชื่อฟิลด์ที่แสดง (Label)*</label>
+                            <input type="text" id="newFieldLabel" placeholder="เช่น น้ำหนัก, วันหมดประกัน"
+                                class="w-full border p-1.5 rounded text-sm bg-white">
+                        </div>
+                        <div class="md:col-span-3">
+                            <label class="block text-xs font-semibold text-gray-600">ประเภทข้อมูล (Type)</label>
+                            <select id="newFieldType" class="w-full border p-1.5 rounded text-sm bg-white">
+                                <option value="text">ข้อความ (Text)</option>
+                                <option value="number">ตัวเลข (Number)</option>
+                                <option value="date">วันที่ (Date)</option>
+                                <option value="combo">เลือกหรือพิมพ์เอง (Combo)</option>
+                                <option value="select">ตัวเลือกแบบล็อก (Select)</option>
+                            </select>
+                        </div>
+                        <div class="md:col-span-3 flex items-end">
+                            <button type="button" id="addNewFieldBtn"
+                                class="w-full bg-blue-600 text-white p-1.5 rounded text-sm hover:bg-blue-700 font-semibold">+
+                                เพิ่มช่องใหม่</button>
+                        </div>
+                    </div>
+                    <div id="selectOptionGroup" class="mt-2 hidden">
+                        <label class="block text-xs font-semibold text-gray-600">ตัวเลือกสำหรับ Select
+                            (คั่นด้วยเครื่องหมายจุลภาค ,)</label>
+                        <input type="text" id="newFieldOptions" placeholder="ตัวเลือก1, ตัวเลือก2, ตัวเลือก3"
+                            class="w-full border p-1.5 rounded text-sm bg-white">
+                    </div>
+                    <div class="mt-2">
+                        <label class="block text-xs font-semibold text-gray-600">คำอธิบายการกรอก (Description)</label>
+                        <input type="text" id="newFieldDesc" placeholder="อธิบายแนะนำการกรอกสำหรับผู้ใช้..."
+                            class="w-full border p-1.5 rounded text-sm bg-white">
+                    </div>
+                </div>
+
+                <!-- Section 2: Manage Existing Fields -->
+                <div>
+                    <h4 class="font-bold text-gray-700 mb-2 text-sm">รายการช่องกรอกข้อมูลทั้งหมดในปัจจุบัน</h4>
+                    <p class="text-xs text-gray-500 mb-2">* ท่านสามารถแก้ไขชื่อ แสดงผล คำอธิบาย
+                        หรือลบช่องที่ไม่ต้องการได้</p>
+                    <div class="space-y-3" id="configList">
+                        <!-- Dynamic Config Items -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-4 border-t flex justify-between bg-gray-50 rounded-b-lg">
+                <button id="resetDefaultConfigBtn"
+                    class="bg-yellow-500 text-white px-4 py-2 rounded text-sm hover:bg-yellow-600">คืนค่าเริ่มต้น</button>
+                <button id="saveConfigBtn"
+                    class="bg-blue-600 text-white px-5 py-2 rounded text-sm hover:bg-blue-700">บันทึกการตั้งค่า</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Excel Modal -->
+    <div id="importModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center p-2 sm:p-4 z-50">
+        <div class="bg-white rounded-lg shadow-lg w-full max-w-5xl max-h-[95vh] sm:max-h-[92vh] flex flex-col">
+            <div class="p-3 sm:p-4 border-b flex justify-between items-center bg-purple-50 rounded-t-lg">
+                <h3 class="text-base sm:text-lg font-bold text-purple-800">📥 นำเข้าข้อมูลจาก Excel</h3>
+                <button id="closeImportModalBtn" class="text-gray-500 hover:text-red-500 text-2xl font-bold p-1">&times;</button>
+            </div>
+
+            <div class="p-4 overflow-y-auto flex-1 space-y-4">
+                <!-- Step 1: File info + Sheet Selector -->
+                <div class="bg-purple-50 border border-purple-200 rounded-lg p-3 space-y-2">
+                    <p class="text-sm font-semibold text-purple-800">📄 ไฟล์ที่เลือก: <span id="importFileName" class="font-normal text-gray-700">-</span></p>
+                    <!-- Sheet selector -->
+                    <div id="sheetSelectorWrap" class="hidden">
+                        <p class="text-xs font-semibold text-purple-700 mb-1">📋 เลือก Sheet ที่ต้องการนำเข้า:</p>
+                        <div class="flex flex-wrap gap-2 mb-2" id="sheetCheckboxes"></div>
+                        <div class="flex gap-2">
+                            <button type="button" id="selectAllSheetsBtn" class="text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 px-2 py-1 rounded border border-purple-300">เลือกทั้งหมด</button>
+                            <button type="button" id="clearAllSheetsBtn" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded border border-gray-300">ยกเลิกทั้งหมด</button>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500">พบ <span id="importRowCount" class="font-bold text-purple-700">0</span> แถวข้อมูล (ไม่รวมหัวตาราง) จาก Sheet ที่เลือก</p>
+                </div>
+
+                <!-- Step 2: Column Mapping -->
+                <div>
+                    <h4 class="font-bold text-gray-700 mb-1 text-sm">🔗 จับคู่คอลัมน์ Excel → ฟิลด์ในระบบ</h4>
+                    <p class="text-xs text-gray-500 mb-2">เลือกว่าคอลัมน์ใดในไฟล์ Excel ตรงกับฟิลด์ใดในระบบ (คอลัมน์ที่ไม่ต้องการ เลือก "ข้าม")</p>
+                    <div id="importMappingTable" class="overflow-x-auto">
+                        <!-- Dynamic mapping rows -->
+                    </div>
+                </div>
+
+                <!-- Step 3: Preview -->
+                <div>
+                    <h4 class="font-bold text-gray-700 mb-1 text-sm">👁 ตัวอย่างข้อมูล (5 แถวแรก)</h4>
+                    <div id="importPreview" class="overflow-x-auto border rounded text-xs max-h-48">
+                        <!-- Preview table -->
+                    </div>
+                </div>
+
+                <!-- Step 3.5: Suspicious Rows Review -->
+                <div id="suspiciousRowsPanel" class="hidden bg-orange-50 border-2 border-orange-300 rounded-lg p-3 space-y-1">
+                    <!-- Dynamic suspicious row review UI rendered by JS -->
+                </div>
+                <p class="text-[11px] text-gray-400" id="suspSkipInfo">
+                    🛡️ แถวที่ถูกข้ามจากตรวจจับหัวข้อ: <span id="suspSkipCount" class="font-bold text-orange-600">0</span> แถว
+                </p>
+
+                <!-- Options & Default Values -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 bg-yellow-50 border border-yellow-200 rounded p-3">
+                    <div class="space-y-2">
+                        <div class="flex items-center gap-2">
+                            <input type="checkbox" id="importSkipFirstRow" checked class="w-4 h-4 text-purple-600 rounded">
+                            <label for="importSkipFirstRow" class="text-xs font-semibold text-yellow-900">ข้ามแถวแรก (หัวตาราง)</label>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="checkbox" id="importAutoExpandRanges" checked class="w-4 h-4 text-amber-600 rounded">
+                            <label for="importAutoExpandRanges" class="text-xs font-semibold text-amber-900" title="เช่น 12-17พห... จะถูกแตกเป็น 12, 13, ..., 17 ให้ทันที">🔄 กระจายช่วง Noid อัตโนมัติ (เช่น 12-17พห...)</label>
+                        </div>
+                        <div class="pt-1 border-t border-yellow-200">
+                            <label class="block text-xs font-bold text-red-900 mb-1">🛡️ การจัดการเมื่อเจอ Noid ซ้ำ:</label>
+                            <select id="importDupStrategy" class="w-full border p-1.5 rounded text-xs bg-white font-semibold text-gray-800">
+                                <option value="skip" selected>🚫 ข้ามแถวที่เลข Noid ซ้ำ (ไม่นำเข้าซ้ำ)</option>
+                                <option value="update">🔄 อัปเดตทับข้อมูลเดิม (Update ข้อมูลล่าสุด)</option>
+                                <option value="allow">⚠️ อนุญาตให้นำเข้าทั้งหมด (ยอมให้ซ้ำ)</option>
+                            </select>
+                            <p class="text-[11px] text-gray-500 mt-0.5">* ตรวจจับทั้งกับฐานข้อมูลและภายในไฟล์เดียวกัน</p>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-purple-900 mb-1">🏷️ กำหนดประเภทครุภัณฑ์ (TYPE):</label>
+                        <select id="importGlobalType" class="w-full border p-1.5 rounded text-sm bg-white font-medium text-gray-700">
+                            <!-- Populated dynamically with TYPE options -->
+                        </select>
+                        <p class="text-[11px] text-gray-500 mt-0.5">* บังคับประเภทให้ทุกแถวในไฟล์นี้ (ถ้าไม่เลือกจะดึงตามไฟล์)</p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-blue-900 mb-1">🏢 กำหนดกลุ่มงาน/แผนก (DIV):</label>
+                        <select id="importGlobalDiv" class="w-full border p-1.5 rounded text-sm bg-white font-medium text-gray-700">
+                            <!-- Populated dynamically with DIV options -->
+                        </select>
+                        <p class="text-[11px] text-gray-500 mt-0.5">* บังคับกลุ่มงานให้ทุกแถวในไฟล์นี้ (ถ้าไม่เลือกจะดึงตามไฟล์)</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-4 border-t flex flex-col sm:flex-row justify-between items-center gap-3 bg-gray-50 rounded-b-lg">
+                <div class="w-full sm:w-1/2">
+                    <div id="importProgressContainer" class="hidden mb-1">
+                        <div class="flex justify-between text-xs text-gray-600 mb-1">
+                            <span id="importProgressText">กำลังนำเข้า: 0/0 (0%)</span>
+                            <span id="importPercent">0%</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                            <div id="importProgressBar" class="bg-purple-600 h-2.5 rounded-full transition-all duration-100" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500" id="importStatusMsg"></p>
+                </div>
+                <div class="flex gap-2 shrink-0">
+                    <button id="closeImportModalBtn2" class="bg-gray-400 text-white px-4 py-2 rounded text-sm hover:bg-gray-500">ยกเลิก</button>
+                    <button id="doImportBtn" class="bg-purple-600 text-white px-6 py-2 rounded text-sm hover:bg-purple-700 font-semibold">📥 นำเข้าข้อมูล</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App Module -->
+    <script type="module" src="js/app.js?v=20260922_3"></script>
+</body>
+
+</html>
