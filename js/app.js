@@ -588,7 +588,11 @@ function renderTableBody() {
                 const m = String(val).trim().match(/^[1-3]/);
                 if (m) val = m[0];
             }
-            const displayVal = f.type === 'number' && val !== '' ? Number(val).toLocaleString() : (val || '-');
+            let displayVal = val || '-';
+            if (val !== '' && (f.type === 'number' || f.key === 'perUnit')) {
+                const n = Number(String(val).replace(/,/g, ''));
+                if (!isNaN(n)) displayVal = n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+            }
             const cellClass = f.key === 'name' ? 'cell-name' : (f.key === 'location' ? 'cell-location' : (f.key === 'div' ? 'cell-div' : (f.key === 'type' ? 'cell-type' : '')));
             
             rowHtml += `<td class="p-2.5 border text-xs whitespace-nowrap ${cellClass}" title="${String(val || '')}">${displayVal}</td>`;
@@ -632,7 +636,11 @@ function renderMobileCards() {
         const type = item.type || '-';
         const div = item.div || '-';
         const receiveTm = item.receiveTm || '-';
-        const perUnit = item.perUnit !== undefined && item.perUnit !== '' ? Number(item.perUnit).toLocaleString() + ' บาท' : '-';
+        let perUnit = '-';
+        if (item.perUnit !== undefined && item.perUnit !== '') {
+            const n = Number(String(item.perUnit).replace(/,/g, ''));
+            perUnit = (!isNaN(n) ? n.toLocaleString('en-US', { maximumFractionDigits: 2 }) : item.perUnit) + ' บาท';
+        }
         const location = item.location || '-';
 
         let fieldsHtml = '';
@@ -645,7 +653,11 @@ function renderMobileCards() {
                     const m = String(val).trim().match(/^[1-3]/);
                     if (m) val = m[0];
                 }
-                const displayVal = f.type === 'number' ? Number(val).toLocaleString() : val;
+                let displayVal = val;
+                if (f.type === 'number' || f.key === 'perUnit') {
+                    const n = Number(String(val).replace(/,/g, ''));
+                    if (!isNaN(n)) displayVal = n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+                }
                 fieldsHtml += `
                     <div class="flex justify-between text-xs py-0.5 border-b border-gray-100 last:border-b-0">
                         <span class="text-gray-500 font-medium">${f.label}:</span>
@@ -715,7 +727,8 @@ function renderDashboard() {
 
     currentData.forEach(item => {
         // Price
-        const price = Number(item.perUnit) || 0;
+        const cleanPriceStr = String(item.perUnit || '').replace(/,/g, '');
+        const price = Number(cleanPriceStr) || 0;
         totalValue += price;
 
         // Type
@@ -1500,23 +1513,76 @@ async function pullFromCloud(showNotice = true) {
     }
 }
 
-async function pushToCloud() {
+async function cancelPendingChanges() {
+    if (pendingChanges.size === 0) {
+        return alert('ไม่มีข้อมูลที่แก้ไขค้างอยู่');
+    }
+    if (!confirm('❌ ยืนยันยกเลิกการแก้ไขทั้งหมดที่ยังไม่ได้ส่งขึ้น Cloud?\nข้อมูลจะกลับไปเป็นเหมือนบน Cloud ล่าสุดและส่วนที่แก้ไขในเครื่องจะหายไป')) return;
+
+    pendingChanges.clear();
+    savePendingChanges();
+
+    // ลบรายการที่เพิ่งสร้างใหม่ในเครื่องออกจาก currentData
+    currentData = currentData.filter(item => !item.id.startsWith('local_'));
+    localStorage.setItem('hospital_equipments', JSON.stringify(currentData));
+
+    setEditMode(false);
+
+    // ดึงข้อมูลจาก Cloud มาทับใหม่
+    await pullFromCloud(false);
+    alert('✅ ยกเลิกการแก้ไขและคืนค่าข้อมูลจาก Cloud เรียบร้อยแล้ว');
+}
+
+function openSyncModal() {
     if (!isFirebaseConfigured) return alert('ยังไม่ได้ตั้งค่า Firebase');
     if (pendingChanges.size === 0) {
         return alert('ℹ️ ข้อมูลในเครื่องตรงกับ Cloud แล้ว ไม่มีรายการใหม่ที่รอส่ง');
     }
 
-    const totalToPush = pendingChanges.size;
-    if (!confirm(`☁️ ยืนยันการส่งข้อมูลที่แก้ไข/เพิ่มใหม่ (${totalToPush} รายการ) ขึ้น Cloud?`)) return;
+    const listContainer = document.getElementById('syncItemList');
+    listContainer.innerHTML = '';
+    
+    const itemsToPush = currentData.filter(item => pendingChanges.has(item.id));
+    
+    itemsToPush.forEach(item => {
+        const isNew = item.id.startsWith('local_');
+        const badge = isNew ? '<span class="bg-green-100 text-green-700 text-[10px] px-1.5 py-0.5 rounded ml-1 font-bold">สร้างใหม่</span>' : '<span class="bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5 rounded ml-1 font-bold">แก้ไข</span>';
+        
+        const div = document.createElement('div');
+        div.className = "flex items-center gap-2 p-2 bg-white border rounded hover:bg-gray-50";
+        div.innerHTML = `
+            <input type="checkbox" class="sync-item-cb w-4 h-4 text-emerald-600 rounded" value="${item.id}" checked>
+            <div class="flex-1 text-sm">
+                <span class="font-semibold text-gray-800">${item.name || '(ไม่มีชื่อ)'}</span>
+                <span class="text-gray-500 text-xs ml-2">รหัส: ${item.noid || '-'}</span>
+                ${badge}
+            </div>
+        `;
+        listContainer.appendChild(div);
+    });
 
-    const btn = document.getElementById('syncCloudBtn');
+    document.getElementById('syncTotalCount').textContent = itemsToPush.length;
+    document.getElementById('selectAllSyncBtn').checked = true;
+    document.getElementById('syncModal').classList.remove('hidden');
+}
+
+async function confirmPushToCloud() {
+    const selectedCbs = Array.from(document.querySelectorAll('.sync-item-cb:checked'));
+    if (selectedCbs.length === 0) {
+        return alert('กรุณาเลือกอย่างน้อย 1 รายการเพื่อส่งขึ้น Cloud');
+    }
+    
+    const selectedIds = selectedCbs.map(cb => cb.value);
+    if (!confirm(`☁️ ยืนยันการส่งข้อมูลที่เลือก (${selectedIds.length} รายการ) ขึ้น Cloud?`)) return;
+
+    const btn = document.getElementById('confirmSyncBtn');
     if (btn) {
         btn.disabled = true;
         btn.innerHTML = '⏳ <span>กำลังส่ง...</span>';
     }
 
     try {
-        const itemsToPush = currentData.filter(item => pendingChanges.has(item.id));
+        const itemsToPush = currentData.filter(item => selectedIds.includes(item.id));
         const chunks = [];
         for (let i = 0; i < itemsToPush.length; i += 400) {
             chunks.push(itemsToPush.slice(i, i + 400));
@@ -1526,8 +1592,16 @@ async function pushToCloud() {
             const batch = writeBatch(db);
             chunk.forEach(item => {
                 const isNewLocal = item.id.startsWith('local_');
+                // Remove the old local ID from pendingChanges before upgrading it
+                if (isNewLocal) {
+                    pendingChanges.delete(item.id);
+                }
                 const docRef = isNewLocal ? doc(equipCollection) : doc(db, "hospital_equipments", item.id);
-                if (isNewLocal) item.id = docRef.id; // Upgrade local ID to real Firebase ID
+                if (isNewLocal) {
+                    item.id = docRef.id; // Upgrade local ID to real Firebase ID
+                } else {
+                    pendingChanges.delete(item.id);
+                }
                 const { ...dataPayload } = item;
                 delete dataPayload.id;
                 batch.set(docRef, dataPayload, { merge: true });
@@ -1535,10 +1609,10 @@ async function pushToCloud() {
             await batch.commit();
         }
 
-        pendingChanges.clear();
         savePendingChanges();
         localStorage.setItem('hospital_equipments', JSON.stringify(currentData));
         renderDataViews();
+        document.getElementById('syncModal').classList.add('hidden');
         alert(`✅ ส่งข้อมูลขึ้น Cloud สำเร็จทั้งหมด ${itemsToPush.length} รายการ!`);
     } catch (err) {
         console.error('Push to Cloud error:', err);
@@ -1546,15 +1620,27 @@ async function pushToCloud() {
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = '☁️ <span>ส่งขึ้น Cloud</span> <span id="pendingSyncBadge" class="hidden bg-white text-emerald-800 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full ml-0.5">0</span>';
-            updateSyncBadge();
+            btn.innerHTML = '☁️ ส่งขึ้น Cloud';
         }
+        updateSyncBadge();
     }
 }
 
+// Checkbox select all logic
+document.getElementById('selectAllSyncBtn')?.addEventListener('change', (e) => {
+    const cbs = document.querySelectorAll('.sync-item-cb');
+    cbs.forEach(cb => cb.checked = e.target.checked);
+});
+
+// Close modal logic
+document.getElementById('closeSyncModalBtn')?.addEventListener('click', () => document.getElementById('syncModal').classList.add('hidden'));
+document.getElementById('closeSyncModalBtn2')?.addEventListener('click', () => document.getElementById('syncModal').classList.add('hidden'));
+document.getElementById('confirmSyncBtn')?.addEventListener('click', confirmPushToCloud);
+
 // Bind Sync Buttons
 document.getElementById('pullCloudBtn')?.addEventListener('click', () => pullFromCloud(true));
-document.getElementById('syncCloudBtn')?.addEventListener('click', pushToCloud);
+document.getElementById('syncCloudBtn')?.addEventListener('click', openSyncModal);
+document.getElementById('cancelCloudSyncBtn')?.addEventListener('click', cancelPendingChanges);
 
 // Initial UI Render
 renderForm();
